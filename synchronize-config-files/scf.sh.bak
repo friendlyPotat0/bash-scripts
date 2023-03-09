@@ -1,0 +1,115 @@
+#!/bin/bash
+
+set -uo pipefail
+IFS=$'\n'
+
+distro=""
+dotfilesPath="/mnt/Data/short-files/config/static/system/setup/dotfiles"
+declare -a configFiles
+declare -a configDirectories
+includeIgnored=false
+
+configure() {
+    [[ "$distro" == "artix" ]] || [[ "$distro" == "linux-mint" ]] || { echo -e "The specified GNU/Linux distro is not supported\nTry \`scf.sh -h\` for more information"; exit; }
+    local configFilesPath="$HOME/Tools/scripts/synchronize-config-files/$distro/config-files.txt"
+    local configDirectoriesPath="$HOME/Tools/scripts/synchronize-config-files/$distro/config-directories.txt"
+    while IFS=',' read -r column1 column2 column3 column4; do
+        local column=""
+        for i in {1..2}; do
+            column="column$i"
+            [ -n "${!column}" ] && configFiles+=("${!column}")
+        done
+        for i in {3..4}; do
+            column="column$i"
+            [ -n "${!column}" ] && configDirectories+=("${!column}")
+        done
+    done < <(paste -d ',' "$configFilesPath" "$configDirectoriesPath")
+}
+
+# Some commands such as `mkdir`, `rsync -az` or `ln` needs `eval` to expand paths with tildes
+
+push_files() {
+    for (( i=0; i<"${#configFiles[@]}"; i+=2 )); do
+        # https://www.shellcheck.net/wiki/SC2115
+        rm -rf "${dotfilesPath:?}/$distro${configFiles[i+1]}"
+    done
+    for (( i=0; i<"${#configFiles[@]}"; i+=2 )); do
+        mkdir -p "${dotfilesPath:?}/$distro${configFiles[i+1]%/*}"
+        rsync -az "$HOME${configFiles[i]#*!}" "${dotfilesPath:?}/$distro${configFiles[i+1]}"
+    done
+}
+
+push_directories() {
+    for (( i=0; i<"${#configDirectories[@]}"; i+=2 )); do
+        rm -rf "${configDirectories[i+1]}"
+    done
+    for (( i=0; i<"${#configDirectories[@]}"; i+=2 )); do
+        mkdir -p "${dotfilesPath:?}/$distro${configDirectories[i+1]}"
+        rsync -az -r "$HOME${configDirectories[i]}" "${dotfilesPath:?}/$distro${configDirectories[i+1]%/*}"
+    done
+}
+
+merge_files() {
+    for (( i=0; i<"${#configFiles[@]}"; i+=2 )); do
+        [ "$includeIgnored" = false ] && grep -q "!" <<< "${configFiles[i]}" && continue
+        rm -f "$HOME${configFiles[i]#*!}"
+    done
+    for (( i=0; i<"${#configFiles[@]}"; i+=2 )); do
+        [ "$includeIgnored" = false ] && grep -q "!" <<< "${configFiles[i]}" && continue
+        mkdir -p "$HOME$(grep -Po '!?\K.*(?=/[^/])' <<< "${configFiles[i]}")"
+        rsync -az "${dotfilesPath:?}/$distro${configFiles[i+1]#*!}" "$HOME${configFiles[i]#*!}"
+    done
+}
+
+merge_directories() {
+    for (( i=0; i<"${#configDirectories[@]}"; i+=2 )); do
+        rm -rf "$HOME${configDirectories[i]}"
+    done
+    for (( i=0; i<"${#configDirectories[@]}"; i+=2 )); do
+        mkdir -p "$HOME${configDirectories[i]%/*}"
+        rsync -az -r "${dotfilesPath:?}/$distro${configDirectories[i+1]}" "$HOME${configDirectories[i]%/*}"
+    done
+}
+
+documentation() {
+cat << 'EOF'
+Supported GNU/Linux distros: artix, linux-mint
+Ignore paths in the config files preceding them with "!" to avoid conflicts with other synchronization services
+OPTIONS
+    -h: Displays documentation
+    -p: Exports configuration
+    --include-ignored: Imports ignored files. Option must precede --merge-files
+    --merge-files: Imports configuration files
+    --merge-directories: Imports configuration directories
+EOF
+}
+
+while getopts ":h-:p:" flag; do
+    case "${flag}" in
+        h ) documentation; exit;;
+        - )
+            case "${OPTARG}" in
+                include-ignored )
+                    includeIgnored=true;
+                ;;
+                merge-files )
+                    distro="${!OPTIND}"
+                    configure
+                    merge_files
+                    exit
+                ;;
+                merge-directories )
+                    distro="${!OPTIND}"
+                    configure
+                    merge_directories
+                    exit
+                ;;
+            esac
+        ;;
+        p ) distro="${OPTARG}"
+            configure
+            push_files && push_directories; exit;;
+        * ) echo -e "Unrecognized option\nTry \`scf.sh -h\` for more information"; exit;;
+    esac
+done
+echo -e "Unrecognized option\nTry \`scf.sh -h\` for more information"
