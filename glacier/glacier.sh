@@ -5,8 +5,8 @@ IFS=$'\n'
 
 bold=$(tput bold); normal=$(tput sgr0); dim=$(tput dim)
 date=$(printf '%(%Y-%m-%d)T\n' -1)
-mapfile -t sourcePaths < ~/Tools/scripts/glacier/paths.txt
-backupDrivePath=$(< ~/Tools/scripts/glacier/location.txt)
+mapfile -t sourcePaths < ~/Tools/scripts/glacier/source.txt
+mapfile -t backupDrivePath < ~/Tools/scripts/glacier/destination.txt
 backupRootDirectory=""
 
 #Generate spinner
