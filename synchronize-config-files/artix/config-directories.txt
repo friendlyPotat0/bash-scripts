@@ -1,4 +1,0 @@
-/.config/nvim,/nvim
-/.macromedia,/.macromedia
-/.config/neofetch,/neofetch
-/.config/awesome,/awesome
