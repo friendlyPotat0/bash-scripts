@@ -1,0 +1,6 @@
+~/Documents
+~/Tools
+~/Pictures
+~/Videos
+/mnt/Data/short-files
+/mnt/Data/large-files
